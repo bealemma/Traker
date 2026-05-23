@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="theme-color" content="#f5a623"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="RECOMP"/>
+  <title>RECOMP Tracker</title>
+  <link rel="manifest" href="#" id="manifest-placeholder"/>
+  <script>
+    // Inline PWA manifest
+    const manifest = {
+      name: "RECOMP Tracker",
+      short_name: "RECOMP",
+      description: "Body recomposition tracker",
+      theme_color: "#f5a623",
+      background_color: "#0e0e0f",
+      display: "standalone",
+      orientation: "portrait",
+      start_url: ".",
+      icons: [
+        { src: "https://api.dicebear.com/7.x/shapes/svg?seed=recomp&size=192", sizes: "192x192", type: "image/svg+xml" },
+        { src: "https://api.dicebear.com/7.x/shapes/svg?seed=recomp&size=512", sizes: "512x512", type: "image/svg+xml" }
+      ]
+    };
+    const blob = new Blob([JSON.stringify(manifest)], {type: "application/json"});
+    document.getElementById("manifest-placeholder").href = URL.createObjectURL(blob);
+  </script>
+  <!-- React + Babel for zero-build JSX -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- API KEY: Replace the empty string below with your Anthropic API key -->
+  <script>window.RECOMP_API_KEY = "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";</script>
+
+  <script type="text/babel" data-presets="react">
+
+const API_KEY = window.RECOMP_API_KEY || "";
+
+async function claudeCall(system, userContent, maxTokens = 1000) {
+  if (!API_KEY) throw new Error("Missing VITE_ANTHROPIC_API_KEY in .env");
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": API_KEY,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: "user", content: userContent }],
+    }),
+  });
+  if (!resp.ok) throw new Error(`API ${resp.status}`);
+  return resp.json();
+}
+
+const STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap');
+  :root {
+    --bg:#0e0e0f;--surface:#161618;--surface2:#1e1e21;--border:#2a2a2e;
+    --amber:#f5a623;--amber-dim:#a06c12;--green:#4ade80;--red:#f87171;
+    --blue:#60a5fa;--text:#e8e8e8;--text-dim:#888;
+    --mono:'Share Tech Mono',monospace;--display:'Barlow Condensed',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:var(--mono);min-height:100vh;}
+  .app{max-width:480px;margin:0 auto;padding:16px;min-height:100vh;display:flex;flex-direction:column;gap:12px;}
+
+  .header{display:flex;align-items:center;justify-content:space-between;padding:16px 0 8px;border-bottom:1px solid var(--amber);}
+  .logo{font-family:var(--display);font-size:32px;font-weight:900;letter-spacing:6px;color:var(--amber);text-transform:uppercase;}
+  .logo span{color:var(--text-dim);font-weight:300;font-size:11px;letter-spacing:2px;display:block;margin-top:-4px;}
+  .date-str{font-size:10px;color:var(--text-dim);text-align:right;letter-spacing:1px;}
+  .sync-badge{display:inline-flex;align-items:center;gap:4px;font-size:9px;letter-spacing:1px;color:var(--text-dim);margin-top:4px;}
+  .sync-dot{width:6px;height:6px;border-radius:50%;background:var(--green);}
+  .sync-dot.saving{background:var(--amber);animation:blink .6s infinite;}
+  .sync-dot.error{background:var(--red);}
+
+  .tabs{display:flex;gap:2px;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:3px;}
+  .tab{flex:1;padding:8px 4px;background:transparent;border:none;color:var(--text-dim);font-family:var(--display);font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;border-radius:2px;transition:all .15s;}
+  .tab.active{background:var(--amber);color:#000;}
+
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px;}
+  .card-label{font-family:var(--display);font-size:10px;font-weight:600;letter-spacing:3px;color:var(--amber-dim);text-transform:uppercase;margin-bottom:10px;}
+
+  .stat-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;}
+  .stat{background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:10px 8px;text-align:center;}
+  .stat-val{font-family:var(--display);font-size:28px;font-weight:900;line-height:1;color:var(--amber);}
+  .stat-val.good{color:var(--green);}.stat-val.warn{color:var(--red);}.stat-val.neutral{color:var(--text);}
+  .stat-label{font-size:9px;color:var(--text-dim);letter-spacing:1px;margin-top:3px;text-transform:uppercase;}
+
+  .progress-bar-wrap{height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;margin:6px 0;}
+  .progress-bar-fill{height:100%;border-radius:3px;transition:width .4s ease;}
+  .prog-amber{background:var(--amber);}.prog-green{background:var(--green);}
+  .prog-red{background:var(--red);}.prog-blue{background:var(--blue);}
+  .prog-row{display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);margin-bottom:4px;}
+
+  /* Input area */
+  .input-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;}
+  .action-btn{padding:14px 8px;background:var(--surface2);border:2px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--display);font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s;}
+  .action-btn:hover{border-color:var(--amber);color:var(--amber);}
+  .action-btn.recording{border-color:var(--red);color:var(--red);animation:pulse-border 1s infinite;}
+  .action-btn.processing{border-color:var(--amber);color:var(--amber-dim);pointer-events:none;}
+  .action-btn.camera-btn:hover{border-color:var(--blue);color:var(--blue);}
+  .action-btn.camera-btn.analyzing{border-color:var(--blue);color:var(--blue);}
+  @keyframes pulse-border{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,.4);}50%{box-shadow:0 0 0 8px rgba(248,113,113,0);}}
+  .mic-dot{width:8px;height:8px;border-radius:50%;background:currentColor;}
+  .action-btn.recording .mic-dot{animation:blink .6s infinite;}
+  @keyframes blink{0%,100%{opacity:1;}50%{opacity:.2;}}
+
+  .transcript-box{background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:10px 12px;font-size:12px;color:var(--text-dim);min-height:40px;font-style:italic;line-height:1.5;}
+  .transcript-box.active{color:var(--text);border-color:var(--amber-dim);}
+  .ai-response{background:#1a1a0e;border:1px solid var(--amber-dim);border-radius:3px;padding:12px;font-size:12px;color:var(--text);line-height:1.6;animation:fadeIn .3s ease;}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
+  @keyframes slideIn{from{opacity:0;transform:translateX(-8px);}to{opacity:1;transform:translateX(0);}}
+
+  /* Confirm modal */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:100;display:flex;align-items:flex-end;justify-content:center;padding:16px;animation:fadeIn .2s ease;}
+  .modal-sheet{background:var(--surface);border:1px solid var(--amber-dim);border-radius:8px;padding:16px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;}
+  .modal-title{font-family:var(--display);font-size:13px;font-weight:700;letter-spacing:3px;color:var(--amber);margin-bottom:12px;text-transform:uppercase;}
+  .confirm-preview-img{width:100%;max-height:140px;object-fit:cover;border-radius:4px;margin-bottom:10px;border:1px solid var(--border);}
+  .confirm-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px;}
+
+  /* Editable confirm fields */
+  .cf-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);}
+  .cf-key{font-size:9px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;width:72px;flex-shrink:0;}
+  .cf-input{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:5px 8px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;}
+  .cf-input:focus{border-color:var(--amber-dim);}
+  .cf-macro-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin:8px 0;}
+  .cf-macro-field{display:flex;flex-direction:column;gap:3px;}
+  .cf-macro-label{font-size:9px;color:var(--text-dim);letter-spacing:1px;text-transform:uppercase;}
+
+  /* Log items */
+  .log-list{display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto;}
+  .log-item{background:var(--surface2);border:1px solid var(--border);border-radius:3px;font-size:11px;animation:slideIn .2s ease;overflow:hidden;}
+  .log-item-main{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;}
+  .log-type{font-family:var(--display);font-size:9px;font-weight:700;letter-spacing:2px;padding:2px 5px;border-radius:2px;text-transform:uppercase;white-space:nowrap;flex-shrink:0;margin-top:1px;}
+  .type-meal{background:rgba(245,166,35,.15);color:var(--amber);border:1px solid var(--amber-dim);}
+  .type-workout{background:rgba(96,165,250,.15);color:var(--blue);border:1px solid #3b82f6;}
+  .log-content{flex:1;color:var(--text);line-height:1.4;min-width:0;}
+  .log-meta{font-size:9px;color:var(--text-dim);margin-top:2px;}
+  .log-cal{font-family:var(--display);font-size:14px;font-weight:700;color:var(--amber);white-space:nowrap;flex-shrink:0;}
+  .log-actions{display:flex;border-top:1px solid var(--border);}
+  .log-action-btn{flex:1;padding:6px;background:transparent;border:none;cursor:pointer;font-family:var(--display);font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;transition:all .12s;}
+  .log-action-btn.edit{color:var(--text-dim);border-right:1px solid var(--border);}
+  .log-action-btn.edit:hover{background:rgba(245,166,35,.08);color:var(--amber);}
+  .log-action-btn.delete{color:var(--text-dim);}
+  .log-action-btn.delete:hover{background:rgba(248,113,113,.08);color:var(--red);}
+
+  /* Edit modal (for existing entries) */
+  .edit-overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:100;display:flex;align-items:center;justify-content:center;padding:16px;animation:fadeIn .2s ease;}
+  .edit-sheet{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:16px;width:100%;max-width:460px;}
+  .edit-title{font-family:var(--display);font-size:13px;font-weight:700;letter-spacing:3px;color:var(--amber);margin-bottom:14px;text-transform:uppercase;}
+  .edit-fields{display:flex;flex-direction:column;gap:8px;}
+  .edit-field{display:flex;flex-direction:column;gap:3px;}
+  .edit-label{font-size:9px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;}
+  .edit-input{background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:8px 10px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;}
+  .edit-input:focus{border-color:var(--amber-dim);}
+  .edit-macro-row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;}
+  .edit-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px;}
+
+  .input-row{display:flex;gap:6px;}
+  .text-input{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:10px 12px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;}
+  .text-input:focus{border-color:var(--amber-dim);}
+  .text-input::placeholder{color:var(--text-dim);}
+
+  .btn{padding:10px 16px;background:var(--amber);border:none;border-radius:3px;color:#000;font-family:var(--display);font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all .15s;white-space:nowrap;}
+  .btn:hover{background:#f0b84a;}.btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn.secondary{background:transparent;border:1px solid var(--border);color:var(--text-dim);}
+  .btn.secondary:hover{border-color:var(--amber-dim);color:var(--amber);}
+  .btn.danger{background:transparent;border:1px solid var(--red);color:var(--red);}
+  .btn.danger:hover{background:rgba(248,113,113,.1);}
+
+  /* Weight goal tracker */
+  .goal-track-card{background:var(--surface2);border-radius:4px;padding:12px;margin-bottom:10px;}
+  .goal-track-status{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+  .status-pill{font-family:var(--display);font-size:10px;font-weight:700;letter-spacing:2px;padding:3px 10px;border-radius:20px;text-transform:uppercase;}
+  .status-pill.on-track{background:rgba(74,222,128,.15);color:var(--green);border:1px solid #22c55e;}
+  .status-pill.behind{background:rgba(248,113,113,.15);color:var(--red);border:1px solid #ef4444;}
+  .status-pill.ahead{background:rgba(96,165,250,.15);color:var(--blue);border:1px solid #3b82f6;}
+  .goal-track-row{display:flex;justify-content:space-between;font-size:10px;padding:3px 0;color:var(--text-dim);}
+  .goal-track-val{color:var(--text);}
+
+
+
+  .weight-entries{display:flex;flex-direction:column;gap:5px;max-height:180px;overflow-y:auto;}
+  .weight-entry{display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:3px;font-size:11px;}
+  .weight-val{font-family:var(--display);font-size:20px;font-weight:700;color:var(--green);}
+  .weight-date{color:var(--text-dim);font-size:10px;}
+  .weight-diff{font-size:10px;}
+  .weight-diff.down{color:var(--green);}.weight-diff.up{color:var(--red);}
+  .hume-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border:1px dashed var(--border);border-radius:3px;font-size:9px;color:var(--text-dim);letter-spacing:1px;}
+  .hume-dot{width:6px;height:6px;border-radius:50%;background:var(--text-dim);}
+  .empty-state{padding:24px;text-align:center;color:var(--text-dim);font-size:11px;letter-spacing:1px;}
+  .spinner{display:inline-block;width:12px;height:12px;border:2px solid var(--amber-dim);border-top-color:var(--amber);border-radius:50%;animation:spin .7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .macro-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px;}
+  .macro{background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:8px;text-align:center;}
+  .macro-val{font-family:var(--display);font-size:20px;font-weight:700;}
+  .macro-label{font-size:9px;color:var(--text-dim);letter-spacing:1px;margin-top:2px;}
+  .scrollable::-webkit-scrollbar{width:3px;}
+  .scrollable::-webkit-scrollbar-track{background:var(--surface);}
+  .scrollable::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+  .section-title{font-family:var(--display);font-size:11px;font-weight:600;letter-spacing:3px;color:var(--text-dim);text-transform:uppercase;margin-bottom:8px;margin-top:4px;}
+  .goal-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:rgba(245,166,35,.1);border:1px solid var(--amber-dim);border-radius:20px;font-size:9px;color:var(--amber);letter-spacing:1px;text-transform:uppercase;}
+  .loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:60vh;gap:16px;}
+  .loading-logo{font-family:var(--display);font-size:48px;font-weight:900;letter-spacing:8px;color:var(--amber);}
+  .loading-text{font-size:10px;color:var(--text-dim);letter-spacing:3px;}
+
+  /* Steps & active cals input */
+  .activity-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;}
+  .activity-box{background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:10px;display:flex;flex-direction:column;gap:4px;}
+  .activity-label{font-size:9px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;}
+  .activity-input-row{display:flex;gap:6px;align-items:center;}
+  .activity-input{flex:1;background:transparent;border:none;border-bottom:1px solid var(--border);padding:4px 0;color:var(--text);font-family:var(--display);font-size:22px;font-weight:700;outline:none;width:100%;}
+  .activity-input:focus{border-bottom-color:var(--amber-dim);}
+  .activity-unit{font-size:10px;color:var(--text-dim);white-space:nowrap;}
+  .net-cal-bar{background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  .net-cal-label{font-size:9px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;}
+  .net-cal-val{font-family:var(--display);font-size:24px;font-weight:900;}
+
+  /* Favorites */
+  .fav-list{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;}
+  .fav-item{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:3px;cursor:pointer;transition:all .12s;}
+  .fav-item:hover{border-color:var(--amber-dim);}
+  .fav-content{flex:1;min-width:0;}
+  .fav-name{font-size:12px;color:var(--text);line-height:1.3;}
+  .fav-meta{font-size:9px;color:var(--text-dim);margin-top:2px;}
+  .fav-cal{font-family:var(--display);font-size:14px;font-weight:700;color:var(--amber);white-space:nowrap;}
+  .fav-use-btn{padding:4px 10px;background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--text-dim);font-family:var(--display);font-size:9px;font-weight:700;letter-spacing:2px;cursor:pointer;transition:all .12s;white-space:nowrap;}
+  .fav-use-btn:hover{border-color:var(--amber);color:var(--amber);}
+  .fav-del-btn{padding:4px 8px;background:transparent;border:none;color:var(--text-dim);cursor:pointer;font-size:12px;transition:all .12s;}
+  .fav-del-btn:hover{color:var(--red);}
+  .fav-tabs{display:flex;gap:4px;margin-bottom:10px;}
+  .fav-tab{flex:1;padding:6px;background:var(--surface2);border:1px solid var(--border);border-radius:3px;color:var(--text-dim);font-family:var(--display);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;text-align:center;transition:all .12s;}
+  .fav-tab.active{background:rgba(245,166,35,.15);border-color:var(--amber-dim);color:var(--amber);}
+  .star-btn{padding:4px 8px;background:transparent;border:none;cursor:pointer;font-size:14px;transition:transform .15s;}
+  .star-btn:hover{transform:scale(1.3);}
+
+  /* Coach tab */
+  .coach-btn{width:100%;padding:20px;background:linear-gradient(135deg,#1a1200 0%,#2a1e00 100%);border:2px solid var(--amber);border-radius:6px;color:var(--amber);font-family:var(--display);font-size:18px;font-weight:900;letter-spacing:4px;text-transform:uppercase;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:12px;transition:all .2s;position:relative;overflow:hidden;}
+  .coach-btn:hover{background:linear-gradient(135deg,#261a00 0%,#3d2c00 100%);box-shadow:0 0 20px rgba(245,166,35,.2);}
+  .coach-btn:disabled{opacity:.5;cursor:not-allowed;}
+  .coach-btn .coach-icon{font-size:22px;}
+  .coach-response{background:#0e0e00;border:1px solid var(--amber-dim);border-radius:6px;padding:16px;font-size:13px;color:var(--text);line-height:1.8;animation:fadeIn .4s ease;white-space:pre-wrap;}
+  .coach-section{margin-top:4px;margin-bottom:2px;font-family:var(--display);font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;}
+  .coach-section.hit{color:var(--green);}
+  .coach-section.miss{color:var(--red);}
+  .coach-section.action{color:var(--amber);}
+  .coach-history{display:flex;flex-direction:column;gap:10px;max-height:420px;overflow-y:auto;}
+  .coach-entry{background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:12px;}
+  .coach-entry-time{font-size:9px;color:var(--text-dim);letter-spacing:2px;margin-bottom:6px;}
+  .coach-entry-text{font-size:12px;color:var(--text);line-height:1.7;white-space:pre-wrap;}
+  .coach-ask-row{display:flex;gap:8px;margin-top:8px;}
+  .coach-ask-input{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:10px 12px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;}
+  .coach-ask-input:focus{border-color:var(--amber-dim);}
+  .coach-ask-input::placeholder{color:var(--text-dim);}
+`;
+
+const RECOMP_GOALS = { calories: 2300, protein: 180, carbs: 220, fat: 65, workoutsPerWeek: 4 };
+
+
+function todayKey() { return new Date().toISOString().slice(0,10); }
+function formatDate() { return new Date().toLocaleDateString("en-US",{weekday:"long",month:"short",day:"numeric",year:"numeric"}).toUpperCase(); }
+
+function pct(val,goal){return Math.min(100,Math.round((val/goal)*100));}
+function weightDiff(entries,idx){if(idx===entries.length-1)return null;return(entries[idx].weight-entries[idx+1].weight).toFixed(1);}
+function daysBetween(a,b){return Math.round((new Date(b)-new Date(a))/(1000*60*60*24));}
+
+async function storageGet(key){try{const v=localStorage.getItem(key);return v?JSON.parse(v):null;}catch{return null;}}
+async function storageSet(key,value){try{localStorage.setItem(key,JSON.stringify(value));}catch(e){console.error("Save failed:",e);}}
+
+function RecompTracker() {
+  const [loading, setLoading] = useState(true);
+  const [syncState, setSyncState] = useState("synced");
+  const [tab, setTab] = useState("today");
+  const [logs, setLogs] = useState({});
+  const [weightLog, setWeightLog] = useState([]);
+  const [weightGoal, setWeightGoal] = useState({ targetWeight: "", targetDate: "" }); // persisted goal
+
+  const [voiceState, setVoiceState] = useState("idle");
+  const [transcript, setTranscript] = useState("");
+  const [aiResponse, setAiResponse] = useState("");
+  const [textInput, setTextInput] = useState("");
+  const [weightInput, setWeightInput] = useState("");
+  const [photoAnalyzing, setPhotoAnalyzing] = useState(false);
+
+  // Confirmation modal — entry is editable before committing
+  const [pendingEntry, setPendingEntry] = useState(null); // {entry, previewUrl}
+  const [pendingForm, setPendingForm] = useState({});
+
+  // Post-log edit modal
+  const [editEntry, setEditEntry] = useState(null);
+  const [editForm, setEditForm] = useState({});
+
+  // Weight goal editing
+  const [editingGoal, setEditingGoal] = useState(false);
+  const [goalForm, setGoalForm] = useState({ targetWeight: "", targetDate: "" });
+
+  // Steps & active calories
+  const [stepsInput, setStepsInput] = useState("");
+  const [activeCalsInput, setActiveCalsInput] = useState("");
+  const [todayActivity, setTodayActivity] = useState(() => ({ steps: 0, activeCals: 0, date: todayKey() }));
+
+  // Favorites
+  const [favorites, setFavorites] = useState({ meals: [], workouts: [] });
+  const [favTab, setFavTab] = useState("meals");
+
+  const saveTimeoutRef = useRef(null);
+  const photoInputRef = useRef(null);
+
+  // ── Load ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [savedLogs, savedWeights, savedGoal, savedActivity, savedFavs] = await Promise.all([
+          storageGet("recomp-logs"), storageGet("recomp-weights"), storageGet("recomp-weight-goal"),
+          storageGet("recomp-activity"), storageGet("recomp-favorites")
+        ]);
+        if (savedLogs && typeof savedLogs==="object") setLogs(savedLogs);
+        if (savedWeights && Array.isArray(savedWeights)) setWeightLog(savedWeights);
+        if (savedGoal) setWeightGoal(savedGoal);
+        if (savedActivity) {
+          // Reset if it's a stale day
+          if (savedActivity.date === todayKey()) setTodayActivity(savedActivity);
+        }
+        if (savedFavs && typeof savedFavs==="object") setFavorites({ meals: savedFavs.meals||[], workouts: savedFavs.workouts||[] });
+      } catch(e) { console.error("Load failed:",e); }
+      setLoading(false);
+    }
+    loadData();
+  }, []);
+
+  const persistLogs = useCallback(async (nl) => {
+    setSyncState("saving");
+    clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(async()=>{await storageSet("recomp-logs",nl);setSyncState("synced");},800);
+  },[]);
+  const persistWeights = useCallback(async (nw)=>{setSyncState("saving");await storageSet("recomp-weights",nw);setSyncState("synced");},[]);
+  const persistGoal = useCallback(async (g)=>{await storageSet("recomp-weight-goal",g);},[]);
+
+  const persistActivity = useCallback(async (a) => { await storageSet("recomp-activity", a); }, []);
+  const persistFavorites = useCallback(async (f) => { await storageSet("recomp-favorites", f); }, []);
+
+  // ── Activity helpers ──────────────────────────────────────────────────
+  const saveActivity = (field, val) => {
+    const updated = { ...todayActivity, [field]: Number(val)||0, date: todayKey() };
+    setTodayActivity(updated);
+    persistActivity(updated);
+  };
+
+  // ── Favorites helpers ─────────────────────────────────────────────────
+  const addFavorite = (entry) => {
+    const type = entry.type === "meal" ? "meals" : "workouts";
+    const fav = {
+      id: Date.now(),
+      description: entry.description,
+      calories: entry.calories||0,
+      protein: entry.protein||0,
+      carbs: entry.carbs||0,
+      fat: entry.fat||0,
+      duration: entry.duration||0,
+      workoutType: entry.workoutType||"",
+      caloriesBurned: entry.caloriesBurned||0,
+      type: entry.type,
+    };
+    const updated = { ...favorites, [type]: [fav, ...favorites[type].filter(f=>f.description!==entry.description)] };
+    setFavorites(updated);
+    persistFavorites(updated);
+  };
+
+  const removeFavorite = (type, id) => {
+    const updated = { ...favorites, [type]: favorites[type].filter(f=>f.id!==id) };
+    setFavorites(updated);
+    persistFavorites(updated);
+  };
+
+  const logFromFavorite = (fav) => {
+    const entry = { ...fav, id: Date.now(), time: new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"}) };
+    confirmAndLog(entry);
+  };
+
+  // ── Totals ────────────────────────────────────────────────────────────
+  const todayLogs = logs[todayKey()]||[];
+  const todayMeals = todayLogs.filter(l=>l.type==="meal");
+  const todayWorkouts = todayLogs.filter(l=>l.type==="workout");
+  const totalCals = todayMeals.reduce((s,m)=>s+(m.calories||0),0);
+  const totalProtein = todayMeals.reduce((s,m)=>s+(m.protein||0),0);
+  const totalCarbs = todayMeals.reduce((s,m)=>s+(m.carbs||0),0);
+  const totalFat = todayMeals.reduce((s,m)=>s+(m.fat||0),0);
+  const calRemaining = RECOMP_GOALS.calories - totalCals;
+  const calPct = pct(totalCals, RECOMP_GOALS.calories);
+  const protPct = pct(totalProtein, RECOMP_GOALS.protein);
+
+  // ── Weight goal math ──────────────────────────────────────────────────
+  const weightGoalCalc = (() => {
+    const current = weightLog[0]?.weight;
+    const start = weightLog[weightLog.length-1]?.weight;
+    const { targetWeight, targetDate } = weightGoal;
+    if (!current || !targetWeight || !targetDate) return null;
+
+    const target = parseFloat(targetWeight);
+    const today = todayKey();
+    const totalDaysNeeded = daysBetween(weightLog[weightLog.length-1]?.date || today, targetDate);
+    const daysElapsed = daysBetween(weightLog[weightLog.length-1]?.date || today, today);
+    const daysLeft = daysBetween(today, targetDate);
+    const totalChange = target - parseFloat(start);
+    const actualChange = parseFloat(current) - parseFloat(start);
+    const expectedChange = totalDaysNeeded > 0 ? totalChange * (daysElapsed / totalDaysNeeded) : 0;
+    const remainingChange = target - parseFloat(current);
+
+    // Projected finish based on current rate
+    let projectedDate = null;
+    if (weightLog.length >= 2 && remainingChange !== 0) {
+      const rate = actualChange / Math.max(daysElapsed, 1); // lbs per day
+      if (rate !== 0 && Math.sign(rate) === Math.sign(remainingChange)) {
+        const daysToGoal = remainingChange / rate;
+        const proj = new Date();
+        proj.setDate(proj.getDate() + Math.round(daysToGoal));
+        projectedDate = proj.toISOString().slice(0,10);
+      }
+    }
+
+    const pctComplete = totalChange !== 0 ? Math.min(100, Math.max(0, Math.round((actualChange / totalChange) * 100))) : 0;
+    const ahead = totalChange < 0 ? actualChange < expectedChange : actualChange > expectedChange;
+    const onTrack = Math.abs(actualChange - expectedChange) < Math.abs(totalChange) * 0.1;
+    let status = "behind";
+    if (onTrack) status = "on-track";
+    else if (ahead) status = "ahead";
+
+    return { current, target, daysLeft, pctComplete, status, projectedDate, remainingChange, totalChange };
+  })();
+
+  // ── Confirm pending ───────────────────────────────────────────────────
+  const confirmAndLog = (entry, previewUrl=null) => {
+    setPendingEntry({entry, previewUrl});
+    setPendingForm({
+      description: entry.description,
+      calories: entry.calories||0,
+      protein: entry.protein||0,
+      carbs: entry.carbs||0,
+      fat: entry.fat||0,
+      duration: entry.duration||0,
+      caloriesBurned: entry.caloriesBurned||0,
+    });
+    setAiResponse("");
+  };
+
+  const commitEntry = () => {
+    const e = pendingEntry.entry;
+    const committed = {
+      ...e,
+      description: pendingForm.description,
+      calories: Number(pendingForm.calories),
+      protein: Number(pendingForm.protein),
+      carbs: Number(pendingForm.carbs),
+      fat: Number(pendingForm.fat),
+      duration: Number(pendingForm.duration),
+      caloriesBurned: Number(pendingForm.caloriesBurned),
+    };
+    setLogs(prev=>{
+      const updated={...prev,[todayKey()]:[...(prev[todayKey()]||[]),committed]};
+      persistLogs(updated);
+      return updated;
+    });
+    setAiResponse(committed.type==="meal"
+      ?`✓ LOGGED  |  ${committed.calories} kcal · ${committed.protein}g P · ${committed.carbs}g C · ${committed.fat}g F`
+      :`✓ WORKOUT  |  ${committed.duration} min · ~${committed.caloriesBurned} kcal burned`);
+    setPendingEntry(null);
+  };
+
+  // ── Delete / Edit ──────────────────────────────────────────────────────
+  const deleteEntry = (dateKey, id) => {
+    setLogs(prev=>{const u={...prev,[dateKey]:(prev[dateKey]||[]).filter(e=>e.id!==id)};persistLogs(u);return u;});
+  };
+  const openEdit = (dateKey, entry) => {
+    setEditEntry({dateKey, entry});
+    setEditForm({description:entry.description,calories:entry.calories||0,protein:entry.protein||0,carbs:entry.carbs||0,fat:entry.fat||0,duration:entry.duration||0,caloriesBurned:entry.caloriesBurned||0});
+  };
+  const saveEdit = () => {
+    const {dateKey, entry} = editEntry;
+    setLogs(prev=>{
+      const u={...prev,[dateKey]:(prev[dateKey]||[]).map(e=>e.id===entry.id?{...e,...editForm,calories:Number(editForm.calories),protein:Number(editForm.protein),carbs:Number(editForm.carbs),fat:Number(editForm.fat),duration:Number(editForm.duration),caloriesBurned:Number(editForm.caloriesBurned)}:e)};
+      persistLogs(u);return u;
+    });
+    setEditEntry(null);
+  };
+
+  // ── Voice — MediaRecorder approach (no Web Speech API) ──────────────
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const recordingTimerRef = useRef(null);
+
+  const handleVoiceClick = async () => {
+    if (voiceState === "recording") {
+      // Stop recording — onStop will fire and process
+      clearTimeout(recordingTimerRef.current);
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+      setVoiceState("processing");
+      return;
+    }
+    if (voiceState !== "idle") return;
+
+    // Request mic
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch(err) {
+      setAiResponse("Microphone access denied. Grant mic permission in your browser, then try again.");
+      return;
+    }
+
+    audioChunksRef.current = [];
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm"
+                   : MediaRecorder.isTypeSupported("audio/ogg")  ? "audio/ogg"
+                   : "audio/mp4";
+
+    const mr = new MediaRecorder(stream, { mimeType });
+    mediaRecorderRef.current = mr;
+
+    mr.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+
+    mr.onstop = async () => {
+      // Stop all mic tracks
+      stream.getTracks().forEach(t => t.stop());
+
+      const blob = new Blob(audioChunksRef.current, { type: mimeType });
+      if (blob.size < 1000) {
+        setAiResponse("No audio captured. Tap the mic, speak, then tap again to stop.");
+        setVoiceState("idle");
+        return;
+      }
+
+      setTranscript("Transcribing…");
+
+      // Convert to base64
+      const base64 = await new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onload = () => res(reader.result.split(",")[1]);
+        reader.onerror = rej;
+        reader.readAsDataURL(blob);
+      });
+
+      // Send to Claude as audio document for transcription + intent
+      const sys = `You are RECOMP, a fitness AI. The user has spoken a voice memo. First transcribe what they said, then parse the intent.
+Return ONLY valid JSON, no markdown:
+MEAL: {"action":"log_meal","transcript":"<what they said>","description":"<brief food description>","calories":<n>,"protein":<n>,"carbs":<n>,"fat":<n>,"message":"<1-2 sentence coach note>"}
+WORKOUT: {"action":"log_workout","transcript":"<what they said>","description":"<brief workout description>","duration":<minutes>,"type":"<strength|cardio|hiit|other>","caloriesBurned":<n>,"message":"<1-2 sentence note>"}
+STATUS: {"action":"status","transcript":"<what they said>","message":"<2-4 sentence coach response>"}`;
+
+      try {
+        const data = await claudeCall(sys, [
+          {type:"document",source:{type:"base64",media_type:mimeType,data:base64}},
+          {type:"text",text:"Transcribe and parse this voice memo."}
+        ], 1000);
+        const raw = (data.content?.[0]?.text || "{}").replace(/```json|```/g, "").trim();
+        const parsed = JSON.parse(raw);
+
+        if (parsed.transcript) setTranscript(parsed.transcript);
+
+        if (parsed.action === "log_meal") {
+          confirmAndLog({ id: Date.now(), type: "meal", description: parsed.description, calories: parsed.calories||0, protein: parsed.protein||0, carbs: parsed.carbs||0, fat: parsed.fat||0, time: new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"}) });
+        } else if (parsed.action === "log_workout") {
+          confirmAndLog({ id: Date.now(), type: "workout", description: parsed.description, duration: parsed.duration, workoutType: parsed.type, caloriesBurned: parsed.caloriesBurned||0, time: new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"}) });
+        } else {
+          setAiResponse(parsed.message || "Could not parse voice input.");
+        }
+      } catch(e) {
+        setAiResponse("Error processing voice. Try typing instead.");
+      }
+      setVoiceState("idle");
+    };
+
+    mr.start(100); // collect data every 100ms
+    setVoiceState("recording");
+    setTranscript("Recording… tap again to stop.");
+    setAiResponse("");
+
+    // Auto-stop after 60s
+    recordingTimerRef.current = setTimeout(() => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+        setVoiceState("processing");
+      }
+    }, 60000);
+  };
+
+  // ── Text / AI ─────────────────────────────────────────────────────────
+  const processTextInput = useCallback(async (input) => {
+    if (!input) { setVoiceState("idle"); return; }
+    setVoiceState("processing");
+    const sys = `You are RECOMP, a fitness AI for body recomposition.
+Goals: ${RECOMP_GOALS.calories} kcal, ${RECOMP_GOALS.protein}g P, ${RECOMP_GOALS.carbs}g C, ${RECOMP_GOALS.fat}g F.
+Today: ${totalCals} kcal, ${totalProtein}g protein so far.
+Return ONLY valid JSON, no markdown:
+MEAL: {"action":"log_meal","description":"<brief>","calories":<n>,"protein":<n>,"carbs":<n>,"fat":<n>,"message":"<1-2 sentence coach note>"}
+WORKOUT: {"action":"log_workout","description":"<brief>","duration":<minutes>,"type":"<strength|cardio|hiit|other>","caloriesBurned":<n>,"message":"<1-2 sentence note>"}
+STATUS: {"action":"status","message":"<2-4 sentence coach response>"}`;
+    try {
+      const data = await claudeCall(sys, input, 1000);
+      const parsed = JSON.parse((data.content?.[0]?.text||"{}").replace(/```json|```/g,"").trim());
+      if (parsed.action==="log_meal") {
+        confirmAndLog({id:Date.now(),type:"meal",description:parsed.description,calories:parsed.calories||0,protein:parsed.protein||0,carbs:parsed.carbs||0,fat:parsed.fat||0,time:new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})});
+        setTranscript("");
+      } else if (parsed.action==="log_workout") {
+        confirmAndLog({id:Date.now(),type:"workout",description:parsed.description,duration:parsed.duration,workoutType:parsed.type,caloriesBurned:parsed.caloriesBurned||0,time:new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})});
+        setTranscript("");
+      } else {
+        setAiResponse(parsed.message||"Could not process that.");
+      }
+    } catch(e) { setAiResponse("Error — try again."); }
+    setVoiceState("idle");
+  }, [totalCals, totalProtein]);
+
+  const handleTextSubmit = () => { if(!textInput.trim())return; setTranscript(textInput); processTextInput(textInput); setTextInput(""); };
+
+  // ── Photo ─────────────────────────────────────────────────────────────
+  const handlePhotoSelect = async (e) => {
+    const file = e.target.files?.[0]; if(!file)return; e.target.value="";
+    setPhotoAnalyzing(true); setAiResponse("");
+    const previewUrl = URL.createObjectURL(file);
+    const base64 = await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(file);});
+    const sys = `You are RECOMP, a nutrition AI. Analyze this food photo and estimate nutrition.
+Return ONLY valid JSON, no markdown:
+{"description":"<concise description>","calories":<n>,"protein":<n>,"carbs":<n>,"fat":<n>,"confidence":"<low|medium|high>","notes":"<1 sentence about assumptions>"}`;
+    try {
+      const data = await claudeCall(sys, [
+        {type:"image",source:{type:"base64",media_type:file.type||"image/jpeg",data:base64}},
+        {type:"text",text:"Analyze this food and estimate the nutritional breakdown."}
+      ], 600);
+      const parsed = JSON.parse((data.content?.[0]?.text||"{}").replace(/```json|```/g,"").trim());
+      confirmAndLog({id:Date.now(),type:"meal",description:parsed.description||"Photo meal",calories:parsed.calories||0,protein:parsed.protein||0,carbs:parsed.carbs||0,fat:parsed.fat||0,time:new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"}),aiNotes:parsed.notes||"",confidence:parsed.confidence||"medium"}, previewUrl);
+    } catch(e) { setAiResponse("Could not analyze photo. Type it manually instead."); }
+    setPhotoAnalyzing(false);
+  };
+
+  // ── Weight + goal ─────────────────────────────────────────────────────
+  const logWeight = () => {
+    const w = parseFloat(weightInput); if(!w||w<50||w>600)return;
+    const entry={weight:w,date:todayKey(),time:new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})};
+    const updated=[entry,...weightLog.filter(e=>e.date!==todayKey())];
+    setWeightLog(updated); persistWeights(updated); setWeightInput("");
+  };
+  const saveGoal = () => {
+    const g={targetWeight:goalForm.targetWeight,targetDate:goalForm.targetDate};
+    setWeightGoal(g); persistGoal(g); setEditingGoal(false);
+  };
+
+  // ── Coach ─────────────────────────────────────────────────────────────
+  const [coachLoading, setCoachLoading] = useState(false);
+  const [coachHistory, setCoachHistory] = useState([]);
+  const [coachAsk, setCoachAsk] = useState("");
+
+  const callCoach = useCallback(async (question = null) => {
+    setCoachLoading(true);
+
+    // Build full context snapshot
+    const allDates = Object.keys(logs).sort().slice(-14); // last 14 days
+    const dailySummaries = allDates.map(d => {
+      const dayMeals = (logs[d]||[]).filter(e=>e.type==="meal");
+      const dayWorkouts = (logs[d]||[]).filter(e=>e.type==="workout");
+      const cals = dayMeals.reduce((s,m)=>s+(m.calories||0),0);
+      const prot = dayMeals.reduce((s,m)=>s+(m.protein||0),0);
+      const carbs = dayMeals.reduce((s,m)=>s+(m.carbs||0),0);
+      const fat = dayMeals.reduce((s,m)=>s+(m.fat||0),0);
+      return `${d}: ${cals} kcal | ${prot}g P | ${carbs}g C | ${fat}g F | ${dayWorkouts.length} workouts`;
+    }).join("\n");
+
+    const weightTrend = weightLog.slice(0,7).map(e=>`${e.date}: ${e.weight} lbs`).join(", ");
+    const sys = `You are Coach, a blunt, experienced personal trainer and nutritionist specializing in body recomposition — simultaneous fat loss and muscle gain. You have access to the user's full training and nutrition log.
+
+Your job: give an honest, data-driven assessment. Don't sugarcoat. Don't be harsh without reason. Be direct like a real coach who cares.
+
+ALWAYS structure your response in exactly this format (use these exact headers):
+✅ HITTING
+(list what they're doing well — be specific with numbers)
+
+❌ LACKING
+(list specific deficits — with exact numbers vs targets)
+
+🎯 THIS WEEK'S PRIORITY
+(1-3 specific, actionable things to fix RIGHT NOW — not vague advice)
+
+💬 COACH SAYS
+(1-2 sentences of direct personal coaching — like a real trainer talking to them)
+
+Goals: ${RECOMP_GOALS.calories} kcal/day | ${RECOMP_GOALS.protein}g protein | ${RECOMP_GOALS.carbs}g carbs | ${RECOMP_GOALS.fat}g fat | ${RECOMP_GOALS.workoutsPerWeek} workouts/week
+Today: ${totalCals} kcal in | ${todayActivity.activeCals} kcal burned | net ${totalCals-todayActivity.activeCals} kcal | ${todayActivity.steps.toLocaleString()} steps | ${totalProtein}g P | ${totalCarbs}g C | ${totalFat}g F | ${todayWorkouts.length} workouts
+Last 14 days log:
+${dailySummaries || "No data logged yet"}
+Weight trend: ${weightTrend || "No weight logged yet"}
+Weight goal: ${weightGoal.targetWeight ? weightGoal.targetWeight + " lbs by " + weightGoal.targetDate : "Not set"}`;
+
+    const userMsg = question
+      ? `My question: ${question}\n\nAlso give me the full assessment.`
+      : "Give me my full assessment right now.";
+
+    try {
+      const data = await claudeCall(sys, userMsg, 1200);
+      const text = data.content?.[0]?.text || "Could not get coaching response.";
+      const entry = {
+        id: Date.now(),
+        time: new Date().toLocaleString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}),
+        question: question || null,
+        text,
+      };
+      setCoachHistory(prev => [entry, ...prev]);
+    } catch(e) {
+      setCoachHistory(prev => [{id:Date.now(),time:"now",text:"Error reaching coach. Try again.",question:null}, ...prev]);
+    }
+    setCoachLoading(false);
+  }, [logs, weightLog, weightGoal, totalCals, totalProtein, totalCarbs, totalFat, todayWorkouts, todayActivity]);
+
+  const handleCoachAsk = () => {
+    if (!coachAsk.trim()) return;
+    callCoach(coachAsk.trim());
+    setCoachAsk("");
+  };
+
+
+
+  // ── Shared log item renderer ──────────────────────────────────────────
+  const renderLogItem = (entry, dateKey) => (
+    <div key={entry.id} className="log-item">
+      <div className="log-item-main">
+        <span className={`log-type type-${entry.type}`}>{entry.type}</span>
+        <div className="log-content">
+          {entry.description}
+          <div className="log-meta">
+            {entry.time}
+            {entry.type==="meal"&&` · P:${entry.protein}g C:${entry.carbs}g F:${entry.fat}g`}
+            {entry.type==="workout"&&` · ${entry.duration}min ${entry.workoutType}`}
+            {entry.confidence&&` · ${entry.confidence} conf`}
+          </div>
+        </div>
+        {entry.type==="meal"&&<div className="log-cal">{entry.calories}</div>}
+        {entry.type==="workout"&&<div className="log-cal" style={{color:"var(--blue)"}}>-{entry.caloriesBurned}</div>}
+      </div>
+      <div className="log-actions">
+        <button className="star-btn" title="Save to favorites" onClick={()=>addFavorite(entry)}>⭐</button>
+        <button className="log-action-btn edit" style={{borderLeft:"1px solid var(--border)"}} onClick={()=>openEdit(dateKey,entry)}>✎ EDIT</button>
+        <button className="log-action-btn delete" onClick={()=>deleteEntry(dateKey,entry.id)}>✕ DELETE</button>
+      </div>
+    </div>
+  );
+
+  if (!API_KEY) return (
+    <><style>{STYLES}</style><div className="app" style={{justifyContent:"center",minHeight:"100vh"}}>
+      <div style={{padding:"40px 0",display:"flex",flexDirection:"column",gap:16}}>
+        <div style={{fontFamily:"var(--display)",fontSize:40,fontWeight:900,letterSpacing:6,color:"var(--amber)",textAlign:"center"}}>RECOMP</div>
+        <div className="card">
+          <div className="card-label">API KEY REQUIRED</div>
+          <div style={{fontSize:11,color:"var(--text-dim)",lineHeight:1.9,marginBottom:16}}>
+            Add your Anthropic API key to enable AI features.<br/><br/>
+            <strong style={{color:"var(--text)"}}>1.</strong> Create a file called <code style={{color:"var(--amber)"}}>".env"</code> in the project root<br/>
+            <strong style={{color:"var(--text)"}}>2.</strong> Add this line:<br/>
+            <code style={{background:"var(--surface2)",padding:"6px 10px",borderRadius:3,display:"block",margin:"6px 0",color:"var(--amber)",fontSize:11,wordBreak:"break-all"}}>VITE_ANTHROPIC_API_KEY=sk-ant-api03-...</code>
+            <strong style={{color:"var(--text)"}}>3.</strong> Run <code style={{color:"var(--amber)"}}>npm run dev</code> again
+          </div>
+          <a href="https://console.anthropic.com/keys" target="_blank" rel="noreferrer"
+            style={{display:"block",textAlign:"center",padding:"12px",background:"var(--amber)",borderRadius:3,color:"#000",fontFamily:"var(--display)",fontWeight:700,letterSpacing:2,textDecoration:"none",fontSize:13}}>
+            GET API KEY →
+          </a>
+        </div>
+      </div>
+    </div></>
+  );
+
+  if (loading) return (<><style>{STYLES}</style><div className="app"><div className="loading-screen"><div className="loading-logo">RECOMP</div><div className="spinner" style={{width:24,height:24}}/><div className="loading-text">LOADING YOUR DATA…</div></div></div></>);
+
+  return (<><style>{STYLES}</style><div className="app">
+
+    {/* Header */}
+    <div className="header">
+      <div className="logo">RECOMP<span>BODY RECOMPOSITION TRACKER</span></div>
+      <div className="date-str">
+        {formatDate()}
+        <div className="sync-badge">
+          <div className={`sync-dot ${syncState==="saving"?"saving":syncState==="error"?"error":""}`}/>
+          {syncState==="saving"?"SAVING…":syncState==="error"?"SAVE ERROR":"SYNCED"}
+        </div>
+      </div>
+    </div>
+
+    {/* Tabs */}
+    <div className="tabs">
+      {["today","weight","log","favs","coach"].map(t=>(
+        <button key={t} className={`tab ${tab===t?"active":""}`} onClick={()=>setTab(t)}>
+          {t==="today"?"TODAY":t==="weight"?"SCALE":t==="log"?"LOG":t==="favs"?"⭐":"💪"}
+        </button>
+      ))}
+    </div>
+
+    {/* ── TODAY ──────────────────────────────────────────────────────── */}
+    {tab==="today"&&(<>
+      <div className="card">
+        <div className="card-label">DAILY TARGETS</div>
+        <div className="stat-row">
+          <div className="stat"><div className={`stat-val ${calPct>105?"warn":calPct>=85?"good":"neutral"}`}>{totalCals}</div><div className="stat-label">KCAL IN</div></div>
+          <div className="stat"><div className={`stat-val ${calRemaining>=0?"good":"warn"}`}>{Math.abs(calRemaining)}</div><div className="stat-label">{calRemaining>=0?"REMAINING":"OVER"}</div></div>
+          <div className="stat"><div className={`stat-val ${protPct>=80?"good":"neutral"}`}>{totalProtein}g</div><div className="stat-label">PROTEIN</div></div>
+        </div>
+        <div className="prog-row"><span>CALORIES</span><span>{totalCals} / {RECOMP_GOALS.calories}</span></div>
+        <div className="progress-bar-wrap"><div className={`progress-bar-fill ${calPct>105?"prog-red":"prog-amber"}`} style={{width:`${calPct}%`}}/></div>
+        <div className="prog-row" style={{marginTop:8}}><span>PROTEIN</span><span>{totalProtein}g / {RECOMP_GOALS.protein}g</span></div>
+        <div className="progress-bar-wrap"><div className="progress-bar-fill prog-green" style={{width:`${protPct}%`}}/></div>
+        <div className="macro-row">
+          <div className="macro"><div className="macro-val" style={{color:"var(--amber)"}}>{totalCarbs}g</div><div className="macro-label">CARBS/{RECOMP_GOALS.carbs}g</div></div>
+          <div className="macro"><div className="macro-val" style={{color:"var(--blue)"}}>{totalFat}g</div><div className="macro-label">FAT/{RECOMP_GOALS.fat}g</div></div>
+          <div className="macro"><div className="macro-val" style={{color:"var(--green)"}}>{todayWorkouts.length}</div><div className="macro-label">WORKOUTS</div></div>
+        </div>
+      </div>
+
+      {/* Activity: Steps + Active Cals */}
+      <div className="card">
+        <div className="card-label">TODAY'S ACTIVITY</div>
+        <div className="activity-row">
+          <div className="activity-box">
+            <div className="activity-label">STEPS</div>
+            <div className="activity-input-row">
+              <input className="activity-input" type="number" placeholder="0" value={stepsInput}
+                onChange={e=>setStepsInput(e.target.value)}
+                onBlur={()=>{if(stepsInput)saveActivity("steps",stepsInput);}}
+                onKeyDown={e=>e.key==="Enter"&&saveActivity("steps",stepsInput)} />
+              <span className="activity-unit">steps</span>
+            </div>
+            <div style={{fontSize:9,color:"var(--text-dim)",marginTop:2}}>saved: {todayActivity.steps.toLocaleString()}</div>
+          </div>
+          <div className="activity-box">
+            <div className="activity-label">ACTIVE CALS</div>
+            <div className="activity-input-row">
+              <input className="activity-input" type="number" placeholder="0" value={activeCalsInput}
+                onChange={e=>setActiveCalsInput(e.target.value)}
+                onBlur={()=>{if(activeCalsInput)saveActivity("activeCals",activeCalsInput);}}
+                onKeyDown={e=>e.key==="Enter"&&saveActivity("activeCals",activeCalsInput)} />
+              <span className="activity-unit">kcal</span>
+            </div>
+            <div style={{fontSize:9,color:"var(--text-dim)",marginTop:2}}>saved: {todayActivity.activeCals} kcal burned</div>
+          </div>
+        </div>
+        {(todayActivity.steps>0||todayActivity.activeCals>0)&&(
+          <div className="net-cal-bar">
+            <div>
+              <div className="net-cal-label">NET CALORIES</div>
+              <div style={{fontSize:9,color:"var(--text-dim)"}}>eaten − burned</div>
+            </div>
+            <div className={`net-cal-val ${totalCals-todayActivity.activeCals<=RECOMP_GOALS.calories?"good":"warn"}`}>
+              {(totalCals - todayActivity.activeCals).toLocaleString()} kcal
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="card-label">LOG INPUT</div>
+        <div className="input-actions">
+          <button
+            className={`action-btn ${voiceState==="recording"?"recording":voiceState==="processing"?"processing":""}`}
+            onClick={handleVoiceClick}
+            disabled={voiceState==="processing"||photoAnalyzing}
+          >
+            <div className="mic-dot"/>
+            {voiceState==="idle"?"TAP: SPEAK":voiceState==="recording"?"TAP TO STOP":<><div className="spinner"/>PROCESSING</>}
+          </button>
+          <button className={`action-btn camera-btn ${photoAnalyzing?"analyzing":""}`} onClick={()=>photoInputRef.current?.click()} disabled={photoAnalyzing||voiceState!=="idle"}>
+            {photoAnalyzing?<><div className="spinner" style={{borderTopColor:"var(--blue)",borderColor:"#1d4ed8"}}/>ANALYZING</>:<>📷 PHOTO / FILE</>}
+          </button>
+        </div>
+        <input ref={photoInputRef} type="file" accept="image/*" style={{display:"none"}} onChange={handlePhotoSelect}/>
+        {transcript&&<div style={{marginBottom:8}}><div className={`transcript-box ${transcript!=="Listening…"?"active":""}`}>{transcript}</div></div>}
+        <div className="input-row">
+          <input className="text-input" placeholder="Type: '2 eggs and toast', 'ran 3 miles'…" value={textInput} onChange={e=>setTextInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleTextSubmit()} disabled={voiceState!=="idle"||photoAnalyzing}/>
+          <button className="btn" onClick={handleTextSubmit} disabled={!textInput.trim()||voiceState!=="idle"||photoAnalyzing}>LOG</button>
+        </div>
+        {aiResponse&&<div className="ai-response" style={{marginTop:8,whiteSpace:"pre-wrap"}}>{aiResponse}</div>}
+      </div>
+
+      <div className="card">
+        <div className="card-label">TODAY'S LOG</div>
+        {todayLogs.length===0?<div className="empty-state">NO ENTRIES YET</div>:(
+          <div className="log-list scrollable">{[...todayLogs].reverse().map(e=>renderLogItem(e,todayKey()))}</div>
+        )}
+      </div>
+    </>)}
+
+
+
+    {/* ── SCALE ──────────────────────────────────────────────────────── */}
+    {tab==="weight"&&(<>
+      <div className="card">
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+          <div className="card-label" style={{margin:0}}>BODY WEIGHT</div>
+          <div className="hume-badge"><div className="hume-dot"/> HUME READY</div>
+        </div>
+
+        {/* Weight goal tracker */}
+        {weightGoalCalc && (
+          <div className="goal-track-card">
+            <div className="goal-track-status">
+              <div className={`status-pill ${weightGoalCalc.status}`}>
+                {weightGoalCalc.status==="on-track"?"ON TRACK":weightGoalCalc.status==="ahead"?"AHEAD":"BEHIND"}
+              </div>
+              <span style={{fontSize:10,color:"var(--text-dim)"}}>{weightGoalCalc.daysLeft} days to goal date</span>
+            </div>
+            <div className="prog-row"><span>PROGRESS TO GOAL</span><span>{weightGoalCalc.pctComplete}%</span></div>
+            <div className="progress-bar-wrap">
+              <div className={`progress-bar-fill ${weightGoalCalc.status==="behind"?"prog-red":weightGoalCalc.status==="ahead"?"prog-blue":"prog-green"}`} style={{width:`${weightGoalCalc.pctComplete}%`}}/>
+            </div>
+            <div className="goal-track-row"><span>CURRENT</span><span className="goal-track-val">{weightGoalCalc.current} lbs</span></div>
+            <div className="goal-track-row"><span>TARGET</span><span className="goal-track-val">{weightGoalCalc.target} lbs ({weightGoalCalc.weightGoal?.targetDate||weightGoal.targetDate})</span></div>
+            <div className="goal-track-row"><span>REMAINING</span><span className="goal-track-val">{Math.abs(weightGoalCalc.remainingChange).toFixed(1)} lbs {weightGoalCalc.remainingChange<0?"to lose":"to gain"}</span></div>
+            {weightGoalCalc.projectedDate&&(
+              <div className="goal-track-row">
+                <span>PROJECTED FINISH</span>
+                <span className="goal-track-val" style={{color:weightGoalCalc.status==="behind"?"var(--red)":weightGoalCalc.status==="ahead"?"var(--blue)":"var(--green)"}}>{weightGoalCalc.projectedDate}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Set / edit goal */}
+        {!editingGoal?(
+          <button className="btn secondary" style={{width:"100%",marginBottom:12}} onClick={()=>{setGoalForm({targetWeight:weightGoal.targetWeight||"",targetDate:weightGoal.targetDate||""});setEditingGoal(true);}}>
+            {weightGoal.targetWeight?"✎ EDIT WEIGHT GOAL":"+ SET WEIGHT GOAL"}
+          </button>
+        ):(
+          <div style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:4,padding:12,marginBottom:12}}>
+            <div style={{fontSize:10,color:"var(--amber-dim)",letterSpacing:3,fontFamily:"var(--display)",fontWeight:700,marginBottom:10}}>WEIGHT GOAL</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+              <div>
+                <div style={{fontSize:9,color:"var(--text-dim)",letterSpacing:2,marginBottom:3}}>TARGET (LBS)</div>
+                <input className="edit-input" type="number" placeholder="e.g. 175" value={goalForm.targetWeight} onChange={e=>setGoalForm(f=>({...f,targetWeight:e.target.value}))}/>
+              </div>
+              <div>
+                <div style={{fontSize:9,color:"var(--text-dim)",letterSpacing:2,marginBottom:3}}>TARGET DATE</div>
+                <input className="edit-input" type="date" value={goalForm.targetDate} onChange={e=>setGoalForm(f=>({...f,targetDate:e.target.value}))}/>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <button className="btn secondary" onClick={()=>setEditingGoal(false)}>CANCEL</button>
+              <button className="btn" onClick={saveGoal} disabled={!goalForm.targetWeight||!goalForm.targetDate}>SAVE GOAL</button>
+            </div>
+          </div>
+        )}
+
+        {weightLog.length>0&&(
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:11,color:"var(--text-dim)",marginBottom:4}}>CURRENT</div>
+            <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+              <span style={{fontFamily:"var(--display)",fontSize:52,fontWeight:900,color:"var(--green)",lineHeight:1}}>{weightLog[0].weight}</span>
+              <span style={{fontFamily:"var(--display)",fontSize:20,color:"var(--text-dim)"}}>LBS</span>
+            </div>
+            <div style={{fontSize:10,color:"var(--text-dim)",marginTop:2}}>LOGGED {weightLog[0].date}</div>
+          </div>
+        )}
+
+        <div className="section-title">LOG WEIGHT</div>
+        <div className="input-row">
+          <input className="text-input" type="number" placeholder="e.g. 185.4" value={weightInput} onChange={e=>setWeightInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&logWeight()}/>
+          <button className="btn" onClick={logWeight} disabled={!weightInput}>LOG</button>
+        </div>
+        <div style={{marginTop:8,fontSize:9,color:"var(--text-dim)",lineHeight:1.6}}>Log daily — morning, post-bathroom, pre-food.<br/>Hume scale sync coming.</div>
+      </div>
+
+      {weightLog.length>0&&(
+        <div className="card">
+          <div className="card-label">WEIGHT HISTORY</div>
+          <div className="weight-entries scrollable">
+            {weightLog.map((e,i)=>{
+              const diff=weightDiff(weightLog,i);
+              return(<div key={e.date+i} className="weight-entry">
+                <div><div className="weight-val">{e.weight} <span style={{fontSize:12,color:"var(--text-dim)"}}>lbs</span></div><div className="weight-date">{e.date} · {e.time}</div></div>
+                {diff!==null&&<div className={`weight-diff ${parseFloat(diff)<0?"down":"up"}`}>{parseFloat(diff)<0?"▼":"▲"} {Math.abs(diff)} lbs</div>}
+              </div>);
+            })}
+          </div>
+          {weightLog.length>=2&&(()=>{
+            const first=weightLog[weightLog.length-1].weight,last=weightLog[0].weight,ch=(last-first).toFixed(1);
+            return(<div style={{marginTop:10,padding:"8px 10px",background:"var(--surface2)",borderRadius:3,fontSize:11}}>
+              <span style={{color:"var(--text-dim)"}}>TOTAL CHANGE: </span>
+              <span style={{color:parseFloat(ch)<0?"var(--green)":"var(--red)",fontFamily:"var(--display)",fontSize:16,fontWeight:700}}>{parseFloat(ch)<0?"▼":"▲"} {Math.abs(ch)} lbs</span>
+              <span style={{color:"var(--text-dim)"}}> over {weightLog.length} entries</span>
+            </div>);
+          })()}
+        </div>
+      )}
+    </>)}
+
+    {/* ── FAVORITES ────────────────────────────────────────────────── */}
+    {tab==="favs"&&(<>
+      <div className="card">
+        <div className="card-label">⭐ FAVORITES</div>
+        <div style={{fontSize:10,color:"var(--text-dim)",marginBottom:10,lineHeight:1.6}}>
+          Tap ⭐ on any logged item to save it. Tap USE to log it instantly.
+        </div>
+        <div className="fav-tabs">
+          <div className={`fav-tab ${favTab==="meals"?"active":""}`} onClick={()=>setFavTab("meals")}>MEALS ({favorites.meals.length})</div>
+          <div className={`fav-tab ${favTab==="workouts"?"active":""}`} onClick={()=>setFavTab("workouts")}>WORKOUTS ({favorites.workouts.length})</div>
+        </div>
+        {favTab==="meals"&&(
+          favorites.meals.length===0
+            ?<div className="empty-state">NO FAVORITE MEALS YET<br/>Tap ⭐ on any logged meal</div>
+            :<div className="fav-list scrollable">
+              {favorites.meals.map(fav=>(
+                <div key={fav.id} className="fav-item">
+                  <div className="fav-content">
+                    <div className="fav-name">{fav.description}</div>
+                    <div className="fav-meta">P:{fav.protein}g · C:{fav.carbs}g · F:{fav.fat}g</div>
+                  </div>
+                  <div className="fav-cal">{fav.calories}</div>
+                  <button className="fav-use-btn" onClick={()=>logFromFavorite(fav)}>USE</button>
+                  <button className="fav-del-btn" onClick={()=>removeFavorite("meals",fav.id)}>✕</button>
+                </div>
+              ))}
+            </div>
+        )}
+        {favTab==="workouts"&&(
+          favorites.workouts.length===0
+            ?<div className="empty-state">NO FAVORITE WORKOUTS YET<br/>Tap ⭐ on any logged workout</div>
+            :<div className="fav-list scrollable">
+              {favorites.workouts.map(fav=>(
+                <div key={fav.id} className="fav-item">
+                  <div className="fav-content">
+                    <div className="fav-name">{fav.description}</div>
+                    <div className="fav-meta">{fav.duration} min · {fav.workoutType}</div>
+                  </div>
+                  <div className="fav-cal" style={{color:"var(--blue)"}}>~{fav.caloriesBurned}</div>
+                  <button className="fav-use-btn" onClick={()=>logFromFavorite(fav)}>USE</button>
+                  <button className="fav-del-btn" onClick={()=>removeFavorite("workouts",fav.id)}>✕</button>
+                </div>
+              ))}
+            </div>
+        )}
+      </div>
+    </>)}
+
+    {/* ── LOG ────────────────────────────────────────────────────────── */}
+    {tab==="log"&&(<>
+      <div className="card">
+        <div className="card-label">GOALS</div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+          <div className="goal-chip">⚡ BODY RECOMP</div>
+          <div className="goal-chip">🎯 {RECOMP_GOALS.calories} KCAL/DAY</div>
+          <div className="goal-chip">💪 {RECOMP_GOALS.protein}G PROTEIN</div>
+          <div className="goal-chip">🏋️ {RECOMP_GOALS.workoutsPerWeek}X / WEEK</div>
+        </div>
+        <div style={{fontSize:10,color:"var(--text-dim)",lineHeight:1.7}}>
+          Slight caloric deficit ({RECOMP_GOALS.calories} kcal) with high protein ({RECOMP_GOALS.protein}g) to preserve and build muscle. Resistance training {RECOMP_GOALS.workoutsPerWeek}x/week minimum.
+        </div>
+      </div>
+      <div className="card">
+        <div className="card-label">ALL LOGGED ENTRIES</div>
+        {Object.keys(logs).length===0?<div className="empty-state">NO ENTRIES YET</div>:(
+          <div className="log-list scrollable" style={{maxHeight:500}}>
+            {Object.entries(logs).sort(([a],[b])=>b.localeCompare(a)).flatMap(([date,entries])=>
+              entries.length>0?[
+                <div key={date} style={{fontSize:9,color:"var(--amber-dim)",letterSpacing:2,padding:"6px 0 2px",fontFamily:"var(--display)",fontWeight:700}}>{date}</div>,
+                ...[...entries].reverse().map(e=>renderLogItem(e,date))
+              ]:[]
+            )}
+          </div>
+        )}
+      </div>
+      <button className="btn secondary" style={{width:"100%",marginBottom:8}} onClick={async()=>{
+        if(window.confirm("Clear ALL data? Cannot be undone.")) {
+          setLogs({});setWeightLog([]);
+          await Promise.all([storageSet("recomp-logs",{}),storageSet("recomp-weights",[])]);
+          setSyncState("synced");
+        }
+      }}>CLEAR ALL DATA</button>
+    </>)}
+
+  </div>
+
+  {/* ── CONFIRMATION MODAL (with inline editing) ────────────────────── */}
+  {pendingEntry&&(
+    <div className="modal-overlay" onClick={()=>setPendingEntry(null)}>
+      <div className="modal-sheet" onClick={e=>e.stopPropagation()}>
+        <div className="modal-title">📋 REVIEW & LOG</div>
+        {pendingEntry.previewUrl&&<img src={pendingEntry.previewUrl} className="confirm-preview-img" alt="food"/>}
+        {pendingEntry.entry.aiNotes&&<div style={{fontSize:10,color:"var(--text-dim)",marginBottom:8,fontStyle:"italic",lineHeight:1.5}}>{pendingEntry.entry.aiNotes}</div>}
+
+        <div className="cf-row">
+          <span className="cf-key">ITEM</span>
+          <input className="cf-input" value={pendingForm.description} onChange={e=>setPendingForm(f=>({...f,description:e.target.value}))}/>
+        </div>
+
+        {pendingEntry.entry.type==="meal"&&(<>
+          <div style={{margin:"8px 0 4px",fontSize:9,color:"var(--text-dim)",letterSpacing:2}}>MACROS — EDIT IF NEEDED</div>
+          <div className="cf-macro-grid">
+            {["calories","protein","carbs","fat"].map(k=>(
+              <div key={k} className="cf-macro-field">
+                <div className="cf-macro-label">{k==="calories"?"KCAL":k.toUpperCase()}</div>
+                <input className="cf-input" type="number" value={pendingForm[k]} onChange={e=>setPendingForm(f=>({...f,[k]:e.target.value}))}/>
+              </div>
+            ))}
+          </div>
+        </>)}
+
+        {pendingEntry.entry.type==="workout"&&(
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:8}}>
+            <div className="cf-macro-field"><div className="cf-macro-label">DURATION (MIN)</div><input className="cf-input" type="number" value={pendingForm.duration} onChange={e=>setPendingForm(f=>({...f,duration:e.target.value}))}/></div>
+            <div className="cf-macro-field"><div className="cf-macro-label">CAL BURNED</div><input className="cf-input" type="number" value={pendingForm.caloriesBurned} onChange={e=>setPendingForm(f=>({...f,caloriesBurned:e.target.value}))}/></div>
+          </div>
+        )}
+
+        <div className="confirm-btns">
+          <button className="btn secondary" onClick={()=>setPendingEntry(null)}>CANCEL</button>
+          <button className="btn" onClick={commitEntry}>✓ LOG IT</button>
+        </div>
+      </div>
+    </div>
+  )}
+
+  {/* ── EDIT MODAL (existing entries) ────────────────────────────────── */}
+  {editEntry&&(
+    <div className="edit-overlay" onClick={()=>setEditEntry(null)}>
+      <div className="edit-sheet" onClick={e=>e.stopPropagation()}>
+        <div className="edit-title">✎ EDIT ENTRY</div>
+        <div className="edit-fields">
+          <div className="edit-field"><div className="edit-label">DESCRIPTION</div><input className="edit-input" value={editForm.description} onChange={e=>setEditForm(f=>({...f,description:e.target.value}))}/></div>
+          {editEntry.entry.type==="meal"&&(
+            <div className="edit-macro-row">
+              {["calories","protein","carbs","fat"].map(k=>(
+                <div key={k} className="edit-field"><div className="edit-label">{k.toUpperCase()}</div><input className="edit-input" type="number" value={editForm[k]} onChange={e=>setEditForm(f=>({...f,[k]:e.target.value}))}/></div>
+              ))}
+            </div>
+          )}
+          {editEntry.entry.type==="workout"&&(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+              <div className="edit-field"><div className="edit-label">DURATION (MIN)</div><input className="edit-input" type="number" value={editForm.duration} onChange={e=>setEditForm(f=>({...f,duration:e.target.value}))}/></div>
+              <div className="edit-field"><div className="edit-label">CAL BURNED</div><input className="edit-input" type="number" value={editForm.caloriesBurned} onChange={e=>setEditForm(f=>({...f,caloriesBurned:e.target.value}))}/></div>
+            </div>
+          )}
+        </div>
+        <div className="edit-btns">
+          <button className="btn secondary" onClick={()=>setEditEntry(null)}>CANCEL</button>
+          <button className="btn" onClick={saveEdit}>SAVE</button>
+        </div>
+      </div>
+    </div>
+  )}
+
+
+    {/* ── COACH ──────────────────────────────────────────────────────── */}
+    {tab==="coach"&&(<>
+      <div className="card">
+        <div className="card-label">💪 YOUR COACH</div>
+        <div style={{fontSize:11,color:"var(--text-dim)",lineHeight:1.7,marginBottom:14}}>
+          Your AI coach reviews your full nutrition log, workout history, and weight trend — then tells you exactly what you're hitting, what you're missing, and what to fix. No fluff.
+        </div>
+        <button className="coach-btn" onClick={()=>callCoach()} disabled={coachLoading}>
+          {coachLoading
+            ? <><div className="spinner" style={{width:16,height:16,borderTopColor:"var(--amber)",borderColor:"var(--amber-dim)"}}/>ANALYZING YOUR DATA…</>
+            : <><span className="coach-icon">💪</span>GET MY ASSESSMENT</>
+          }
+        </button>
+        <div className="coach-ask-row">
+          <input
+            className="coach-ask-input"
+            placeholder="Ask your coach something specific…"
+            value={coachAsk}
+            onChange={e=>setCoachAsk(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&handleCoachAsk()}
+            disabled={coachLoading}
+          />
+          <button className="btn" onClick={handleCoachAsk} disabled={!coachAsk.trim()||coachLoading}>ASK</button>
+        </div>
+      </div>
+
+      {coachHistory.length>0&&(
+        <div className="card">
+          <div className="card-label">COACHING HISTORY</div>
+          <div className="coach-history scrollable">
+            {coachHistory.map(entry=>(
+              <div key={entry.id} className="coach-entry">
+                <div className="coach-entry-time">
+                  {entry.time}{entry.question&&<span style={{color:"var(--amber)",marginLeft:8}}>re: "{entry.question}"</span>}
+                </div>
+                <div className="coach-entry-text">{entry.text}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>)}
+
+  </>);
+}
+
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(RecompTracker));
+  </script>
+</body>
+</html>
